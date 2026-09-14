@@ -1,0 +1,39 @@
+#!/bin/bash
+# METADATA_START
+# ---
+# test: apparmor aa-disable
+# desc: Verifies 'aa-disable' can disable an AppArmor profile whose local
+#   include sits after the closing brace (LP#1848227), and that aa-status
+#   no longer lists the profile afterwards.
+# steps:
+#   - create /etc/apparmor.d/local/usr.sbin.cupsd (empty local include)
+#   - create /etc/apparmor.d/usr.sbin.test_profile with the include placed
+#     after the closing '}'
+#   - run 'aa-disable' on the test profile, expect a 'Disabling...' message
+#   - run 'aa-status | grep test_profile', expect no match (profile disabled)
+#   - remove the test profile and local include
+# author: <ilmanzo@gmail.com>
+# maintainer: QE Security <none@suse.de>
+# expected: no errors raised, profile disabled and no longer listed
+# platform: Tumbleweed
+# tags: security apparmor aa-disable poo#81730
+# ---
+# METADATA_END
+
+set -e
+
+# Source the helper script for argument handling
+source ../lib/helper.sh
+
+# Define files required for this test
+TEST_FILES=(test_aa_disable.py)
+
+# Delegate argument processing to the helper
+handle_args "$0" "$@"
+
+ensure_root
+ensure_command_available "aa-disable"
+ensure_command_available "aa-status"
+
+# run tests with pytest and generate junit xml results
+pytest test_aa_disable.py --junitxml=results.xml
