@@ -308,8 +308,13 @@ unavoidable second SUT.
   continues to work unchanged.
 
 - **`data/<domain>/openqa_agnostic/<lang>/<TestName>/`** -- the portable
-  artifact: language source file(s) + a `runtest` script. Canonical
-  templates: `testPolkit/runtest` (go), `yama/runtest` (python, with the
+  artifact: language source file(s) + a `runtest` script + configuration file(s), if any.
+  Any configuration file(s) needed by the test must not be inline in the test
+  code, prefer separate configuration file(s). They must reside in
+  `data/<domain>/openqa_agnostic/<lang>/<TestName>/`.
+  Examples: `data/security/openqa_agnostic/python/testOqsProvider/oqs-openssl.cnf` or
+  `data/security/openqa_agnostic/python/testApacheSSLPQC/pqc-ssl.conf`
+  Canonical templates: `testPolkit/runtest` (go), `yama/runtest` (python, with the
   `set -e`-relaxation trick), and `testLibsoup/runtest` (python, wrapping
   an external test runner). Every `runtest` has this shape:
 
@@ -335,7 +340,7 @@ unavoidable second SUT.
   handle_args "$0" "$@"
 
   # actual invocation, e.g.:
-  pytest <file>.py --junitxml=results.xml       # python
+  pytest -v <file>.py --junitxml=results.xml       # python, -v for verbose output
   gotestsum --format=standard-verbose --junitfile results.xml   # go, after `go clean -testcache`
   javac X.java && java X > results.tap          # java, hand-rolled TAP (no JUnit runner on SUT)
   ```
@@ -350,6 +355,21 @@ unavoidable second SUT.
   later via the uploaded XML, not via the script's own exit code. Wrap the
   pytest call: `set +e; pytest ...; rc=$?; set -e; [ -f results.xml ] &&
   exit 0; exit $rc` (see `yama/runtest`).
+
+  For pytest-based tests, the resulting python code MUST BE compatible with Python 3.6,
+  so do not use Python 3.7+ only function invocations and features.
+
+  DO NOT install packages under test in `runtest`
+
+  List contents of test execution directory to stdout using
+  ```
+  echo "--- Test directory: $PWD ---"
+  ls -l
+  echo "----------------------------"
+  ```
+
+  Use bash command `install` to install the configuration file(s) and cat their
+  contents to the stdout as in `data/security/openqa_agnostic/python/testOqsProvider/runtest`
 
 - **`data/openqa_agnostic/lib/helper.sh`** -- shared across all domains.
   Provides `handle_args`, `ensure_root`, `ensure_command_available`.
@@ -388,6 +408,21 @@ unavoidable second SUT.
   One codebase exception, `go_post_quantum.pm`, bypasses the runner
   entirely for a simple stdout-substring check with no XUnit/TAP result --
   that's a legacy shortcut, not the pattern to copy for new conversions.
+
+  Do not use
+  ```
+  sub test_flags {
+     return {always_rollback => 1};
+  }
+  ```
+  if the test is to be used / scheduled on architectures not supporting rollback
+  such as s390x. Ask user about targeted architectures.
+
+  Record package(s) under test version(s) using `record_info`, like
+  ```
+    my $<package>_version = script_output(q(rpm -q --queryformat '%{VERSION}' <package>));
+    record_info('<package>', "version $<package>_version");
+  ```
 
 - **Scheduling**: the module is referenced by its openQA path
   (`<domain>/oqa_agnostic/<name>`) from a `schedule/<domain>/*.yaml`
