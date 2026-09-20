@@ -524,7 +524,78 @@ unavoidable second SUT.
    the test body itself still needs a real SUT run to confirm it passes  --
    never claim a ported test passes without having run it.
 
-## 4. Hard constraints
+## 4. PR authoring standards for conversions and optimizations
+
+Reference PRs: os-autoinst-distri-opensuse #26741 (module optimization)
+and #26740 (dead code removal). Apply the same discipline to any PR that
+converts a test to agnostic format or improves its performance.
+
+### 4.1 History investigation (always first)
+
+Before writing code, look up every commit that touched the original `.pm`:
+```bash
+curl -s "https://api.github.com/repos/os-autoinst/os-autoinst-distri-opensuse/commits?path=<file>&per_page=30"
+```
+For each relevant commit fetch the diff and read the message. Answer:
+why does this code look the way it does? Was there a bug, a failure, a
+deliberate design decision? Is that reason still valid? If the reason is
+gone or was never documented, say so in the PR description.
+
+### 4.2 Baseline measurement (always before claiming a speedup)
+
+Collect `autoinst-log.txt` from several recent passing jobs that run the
+target module. Extract the module runtime:
+```bash
+grep "finished <module_name>" autoinst-log.txt | grep -o "runtime: [0-9]* s"
+```
+Decompose by phase using timestamp deltas. Identify what is actually slow
+before proposing a fix.
+
+### 4.3 Verification breadth
+
+Clone the same source job with and without the PR branch across all
+products, architectures, machines, and backends the module runs on.
+Always use `_GROUP_ID=0`. For modules that run on many products, run 10+
+paired jobs. More coverage is always better -- a module running 300k+
+times/year warrants covering every supported arch and SP.
+
+### 4.4 Paired measurement
+
+Record the module's runtime from `autoinst-log.txt` for both the source
+job (baseline) and the verification job (with PR). Never compare jobs from
+different builds or days. Use the exact same source job cloned twice.
+
+### 4.5 PR description structure
+
+```
+<one line: scale context and what changed>
+
+<one paragraph per change: what, why it existed, why safe to remove/change>
+
+Risk: <worst case, why already mitigated, years of evidence>
+
+## Results
+
+<N> paired runs, every with-PR job faster/equal, no regressions.
+
+| Target | Source | Baseline | Verification | With PR | Saved |
+|--------|--------|----------|--------------|---------|-------|
+| TW x86_64 | [ID](url) | Xs | [ID](url) | Ys | -Zs |
+| **average** | | **Xs** | | **Ys** | **-Zs** |
+
+At <N> runs/year: ~<N> machine-hours/year saved.
+
+<one-line footnote per non-pass result>
+```
+
+Rules:
+- No em dashes. No wall of text. No marketing language.
+- Every number comes from an actual log or API call, not an estimate.
+- Non-pass jobs get one footnote line: what failed and whether the changed
+  module itself passed.
+- Keep Risk short: worst case in one sentence, mitigation in one sentence.
+
+## 5. Hard constraints
 
 - `language` is only `go|python|java` in `agnosticTestRunner->new()`.
 - `domain` must match a supported domain (`security`, `console`, etc.).
