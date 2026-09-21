@@ -6,16 +6,12 @@ resulting artifacts). This file is for humans; `SKILL.md` is the actual
 instructions the agent follows, `DESIGN.md` is the original design
 rationale.
 
-## Where it lives
+## Installation
 
-**Staged here temporarily.** This started as `.claude/skills/openqa-agnostic/`
-on branch `poo202764_oqa_agnostic_skill` in `os-autoinst-distri-opensuse`
-and was relocated here while it's still a work in progress, to keep it out
-of that repo's history until it's ready. To make it live in a target repo
-again, copy this whole directory to `<repo>/.claude/skills/openqa-agnostic/`
-(drop the `reports/` subfolder — that's a one-off Discovery run output, not
-part of the skill itself). No other install step — Claude Code
-auto-discovers project skills from `.claude/skills/*/SKILL.md`.
+Clone this repo to to `~/.claude/skills/`. If you plan to contribute then
+fork this repo and then clone the fork to `~/.claude/skills/`.
+Restart Claude after cloning and it will auto-discover the skill.
+You can check it with `/skills` command.
 
 ## Prerequisites
 
