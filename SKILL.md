@@ -357,7 +357,46 @@ unavoidable second SUT.
   exit 0; exit $rc` (see `yama/runtest`).
 
   For pytest-based tests, the resulting python code MUST BE compatible with Python 3.6,
-  so do not use Python 3.7+ only function invocations and features.
+  so do not use Python 3.7+ only function invocations and features. This
+  matters because SLE 15 ships Python 3.6 and SLE 12 ships Python 3.4.
+  f-strings and `subprocess.run` both require Python 3.6+; using them is
+  fine and idiomatic, but they will cause a collection-time `SyntaxError`
+  crash on SLE 12, producing a hard module failure instead of a skip.
+
+  **Platform version guard -- required when the test's schedule reaches
+  SLE 12 or any other platform with Python < 3.6.** Check the
+  `conditional_schedule` sections of every YAML that includes the new
+  module: if any branch reaches a product with Python < 3.6 (SLE 12-SP5,
+  SLE 12-SP3), add a version guard at the top of `runtest` (after
+  `ensure_root`) that skips gracefully rather than crashing at collection:
+
+  ```bash
+  # Skip on Python < 3.6 (SLE 12 ships 3.4; f-strings and subprocess.run
+  # require 3.6+). Emit a JUnit skip result so the module reports clean.
+  py_ver=$(python3 -c "import sys; print('%d%02d' % sys.version_info[:2])" \
+           2>/dev/null || echo "000")
+  if [ "$py_ver" -lt 306 ]; then
+      echo "SKIP: Python 3.6+ required (found $(python3 --version 2>&1))"
+      cat > results.xml <<EOF
+  <?xml version="1.0" encoding="UTF-8"?>
+  <testsuite name="<TestName>" tests="1" skipped="1" failures="0" errors="0">
+    <testcase name="<test_name>" classname="<TestName>">
+      <skipped message="Python 3.6+ required for f-strings and subprocess.run"/>
+    </testcase>
+  </testsuite>
+  EOF
+      exit 0
+  fi
+  ```
+
+  If the module is explicitly scoped to SLE 15+ or newer in its `platform:`
+  metadata and the schedule only reaches those versions, the guard is not
+  needed -- but verify the schedule before omitting it. The concrete failure
+  mode (a collection-time `SyntaxError` on Python 3.4 crashing the entire
+  `pytest` run rather than skipping) was first observed in `testSudo` on
+  SLE 12-SP5 s390x via `mau-extratests2.yaml`, where `sudo_agnostic` sits
+  in the unguarded `schedule:` section that runs on all versions including
+  12-SP5. See os-autoinst-distri-opensuse PR #26742 for the fix.
 
   DO NOT install packages under test in `runtest`
 
@@ -485,7 +524,78 @@ unavoidable second SUT.
    the test body itself still needs a real SUT run to confirm it passes  --
    never claim a ported test passes without having run it.
 
-## 4. Hard constraints
+## 4. PR authoring standards for conversions and optimizations
+
+Reference PRs: os-autoinst-distri-opensuse #26741 (module optimization)
+and #26740 (dead code removal). Apply the same discipline to any PR that
+converts a test to agnostic format or improves its performance.
+
+### 4.1 History investigation (always first)
+
+Before writing code, look up every commit that touched the original `.pm`:
+```bash
+curl -s "https://api.github.com/repos/os-autoinst/os-autoinst-distri-opensuse/commits?path=<file>&per_page=30"
+```
+For each relevant commit fetch the diff and read the message. Answer:
+why does this code look the way it does? Was there a bug, a failure, a
+deliberate design decision? Is that reason still valid? If the reason is
+gone or was never documented, say so in the PR description.
+
+### 4.2 Baseline measurement (always before claiming a speedup)
+
+Collect `autoinst-log.txt` from several recent passing jobs that run the
+target module. Extract the module runtime:
+```bash
+grep "finished <module_name>" autoinst-log.txt | grep -o "runtime: [0-9]* s"
+```
+Decompose by phase using timestamp deltas. Identify what is actually slow
+before proposing a fix.
+
+### 4.3 Verification breadth
+
+Clone the same source job with and without the PR branch across all
+products, architectures, machines, and backends the module runs on.
+Always use `_GROUP_ID=0`. For modules that run on many products, run 10+
+paired jobs. More coverage is always better -- a module running 300k+
+times/year warrants covering every supported arch and SP.
+
+### 4.4 Paired measurement
+
+Record the module's runtime from `autoinst-log.txt` for both the source
+job (baseline) and the verification job (with PR). Never compare jobs from
+different builds or days. Use the exact same source job cloned twice.
+
+### 4.5 PR description structure
+
+```
+<one line: scale context and what changed>
+
+<one paragraph per change: what, why it existed, why safe to remove/change>
+
+Risk: <worst case, why already mitigated, years of evidence>
+
+## Results
+
+<N> paired runs, every with-PR job faster/equal, no regressions.
+
+| Target | Source | Baseline | Verification | With PR | Saved |
+|--------|--------|----------|--------------|---------|-------|
+| TW x86_64 | [ID](url) | Xs | [ID](url) | Ys | -Zs |
+| **average** | | **Xs** | | **Ys** | **-Zs** |
+
+At <N> runs/year: ~<N> machine-hours/year saved.
+
+<one-line footnote per non-pass result>
+```
+
+Rules:
+- No em dashes. No wall of text. No marketing language.
+- Every number comes from an actual log or API call, not an estimate.
+- Non-pass jobs get one footnote line: what failed and whether the changed
+  module itself passed.
+- Keep Risk short: worst case in one sentence, mitigation in one sentence.
+
+## 5. Hard constraints
 
 - `language` is only `go|python|java` in `agnosticTestRunner->new()`.
 - `domain` must match a supported domain (`security`, `console`, etc.).
