@@ -363,6 +363,11 @@ unavoidable second SUT.
   fine and idiomatic, but they will cause a collection-time `SyntaxError`
   crash on SLE 12, producing a hard module failure instead of a skip.
 
+  For pytest-based tests, use Python docstrings to document what each python function does,
+  what the function returns and what are the function's input parameters, if any.
+  Use :param <input_parameter> <type> <short explanation of the input parameter> and
+  :return <return_value> <type> <short explanation of the return value>.
+
   **Platform version guard -- required when the test's schedule reaches
   SLE 12 or any other platform with Python < 3.6.** Check the
   `conditional_schedule` sections of every YAML that includes the new
